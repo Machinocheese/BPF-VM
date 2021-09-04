@@ -36,55 +36,70 @@ void execute_alu64_insn(struct bpf_insn instr){
     printf("Offset shouldn't be zero\n"); // But CAN it??
   }
 
-  if (BPF_OP(instr.code) == BPF_ADD){
-    src_imm_op(+);
-  } else if (BPF_OP(instr.code) == BPF_SUB){
-    src_imm_op(-);
-  } else if (BPF_OP(instr.code) == BPF_MUL){
-    src_imm_op(*);
-  } else if (BPF_OP(instr.code) == BPF_DIV){
-    src_imm_op(/);
-  } else if (BPF_OP(instr.code) == BPF_OR){
-    src_imm_op(|);
-  } else if (BPF_OP(instr.code) == BPF_AND){
-    src_imm_op(&);
-  } else if (BPF_OP(instr.code) == BPF_LSH){
-    src_imm_op(<<);
-  } else if (BPF_OP(instr.code) == BPF_RSH){
-    // Logical right shift. MSB is replaced with a zero.
-    if(source)
-      registers[instr.dst_reg] >>= (uint64_t)registers[instr.src_reg];
-    else
-      registers[instr.dst_reg] >>= (uint64_t)instr.imm;   
-  } else if (BPF_OP(instr.code) == BPF_NEG){
-    registers[instr.dst_reg] = -registers[instr.dst_reg]; 
-  } else if (BPF_OP(instr.code) == BPF_MOD){
-    src_imm_op(%);
-  } else if (BPF_OP(instr.code) == BPF_XOR){
-    src_imm_op(^);
-  } else if (BPF_OP(instr.code) == BPF_MOV){
-    if(source)
-      registers[instr.dst_reg] = registers[instr.src_reg];
-    else
-      registers[instr.dst_reg] = instr.imm;   
-  } else if (BPF_OP(instr.code) == BPF_ARSH){
-    // Arithmetic right shift.
-    if(source){
-      uint64_t msb = (uint64_t)registers[instr.src_reg] & (1 << 31);
-      registers[instr.dst_reg] >>= (uint64_t)registers[instr.src_reg];
-      registers[instr.dst_reg] ^= msb;
-    } else {
-      uint64_t msb = (uint64_t)instr.imm & (1 << 31);
-      registers[instr.dst_reg] >>= (uint64_t)instr.imm;   
-      registers[instr.dst_reg] ^= msb;
-    }
-  } 
-  // else if (BPF_OP(instr.code) & BPF_END){ 
-  // Byteswap will be dealt with in ALU32. I could only find 0xd4 and 0xdc opcodes, both of which are BPF_CLASS() == BPF_ALU
-  //  Would the BPF machine recognize 0xd7 or 0xdf as a legit instruction?
-  else {
-    printf("Should never reach here\n");
-  } 
+  switch(BPF_OP(instr.code))
+  {
+    case BPF_ADD:
+      src_imm_op(+);
+      break;
+    case BPF_SUB:
+      src_imm_op(-);
+      break;
+    case BPF_MUL:
+      src_imm_op(*);
+      break;
+    case BPF_DIV:
+      src_imm_op(/);
+      break;
+    case BPF_OR:
+      src_imm_op(|);
+      break;
+    case BPF_AND:
+      src_imm_op(&);
+      break;
+    case BPF_LSH:
+      src_imm_op(<<);
+      break;
+    case BPF_RSH:
+      // Logical right shift. MSB is replaced with a zero.
+      if(source)
+        registers[instr.dst_reg] >>= (uint64_t)registers[instr.src_reg];
+      else
+        registers[instr.dst_reg] >>= (uint64_t)instr.imm;   
+      break;
+    case BPF_NEG:
+      registers[instr.dst_reg] = -registers[instr.dst_reg]; 
+      break;
+    case BPF_MOD:
+      src_imm_op(%);
+      break;
+    case BPF_XOR:
+      src_imm_op(^);
+      break;
+    case BPF_MOV:
+      if(source)
+        registers[instr.dst_reg] = registers[instr.src_reg];
+      else
+        registers[instr.dst_reg] = instr.imm;   
+      break;
+    case BPF_ARSH:
+      // Arithmetic right shift.
+      if(source){
+        uint64_t msb = (uint64_t)registers[instr.src_reg] & (1 << 31);
+        registers[instr.dst_reg] >>= (uint64_t)registers[instr.src_reg];
+        registers[instr.dst_reg] ^= msb;
+      } else {
+        uint64_t msb = (uint64_t)instr.imm & (1 << 31);
+        registers[instr.dst_reg] >>= (uint64_t)instr.imm;   
+        registers[instr.dst_reg] ^= msb;
+      }
+      break;
+    // case BPF_END:
+    // Byteswap will be dealt with in ALU32. I could only find 0xd4 and 0xdc opcodes, both of which are BPF_CLASS() == BPF_ALU
+    //  Would the BPF machine recognize 0xd7 or 0xdf as a legit instruction?
+    default:
+      printf("Should never reach here\n");
+      break;
+  }
 }
 
 int execute_jmp_insn(struct bpf_insn instr){
@@ -100,24 +115,33 @@ int execute_jmp_insn(struct bpf_insn instr){
 // Returns the offset of the following instruction.
 int execute_bpf_insn(struct bpf_insn instr){
   int jump_offset = 1;
-  // Instead of making a massive switch statement, first sort the instructions out based on functionality before branching into smaller switches in subfunctions.
+  // Simplifying the switch statement by sorting instructions based on BPF_CLASS before they then get sorted again, but in individual subfunctions.
   //uint8_t class:3 = instr.code & 7; // 3 LSB bits == instruction class
-  if (BPF_CLASS(instr.code) == BPF_MISC){ // in eBPF also called BPF_ALU64
-    execute_alu64_insn(instr); 
-  } else if (BPF_CLASS(instr.code) == BPF_RET){ // in eBPF also called JMP32. This INSTR looks pretty undocumented (if it exists...)
-    printf("Unimplemented RET...\n"); 
-  } else if (BPF_CLASS(instr.code) == BPF_JMP){
-    jump_offset = execute_jmp_insn(instr);
-  } else if (BPF_CLASS(instr.code) == BPF_ALU){
-    printf("Unimplemented ALU...\n"); 
-  } else if (BPF_CLASS(instr.code) == BPF_ST){ 
-    printf("Unimplemented ST...\n");
-  } else if (BPF_CLASS(instr.code) == BPF_LDX){
-    printf("Unimplemented LDX...\n"); 
-  } else if (BPF_CLASS(instr.code) == BPF_LD){
-    printf("Unimplemented LD...\n");
-  } else {
-    printf("Should never reach here\n");
+  switch(BPF_CLASS(instr.code)){
+    case BPF_MISC: // in eBPF also called BPF_ALU64
+      execute_alu64_insn(instr);
+      break;
+    case BPF_RET:  // in eBPF also called JMP32.
+      printf("Unimplemented RET...\n");
+      break;
+    case BPF_JMP:
+      jump_offset = execute_jmp_insn(instr);
+      break;
+    case BPF_ALU:
+      printf("Unimplemented ALU...\n");
+      break;
+    case BPF_ST:
+      printf("Unimplemented ST...\n");
+      break;
+    case BPF_LDX:
+      printf("Unimplemented LDX...\n");
+      break;
+    case BPF_LD:
+      printf("Unimplemented LD...\n");
+      break;
+    default:
+      printf("Should never reach here\n");
+      break;
   }
 
   for(int i = 0; i < 10; i++){
