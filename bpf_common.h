@@ -51,11 +51,19 @@ const unsigned int insn_size = sizeof(struct bpf_insn);
 #define   BPF_ARSH  0xc0 // eBPF only
 #define   BPF_END   0xd0 // eBPF only
 
-#define		BPF_JA		0x00
+#define		BPF_JA		0x00 // BPF_JMP only
 #define		BPF_JEQ		0x10
 #define		BPF_JGT		0x20
 #define		BPF_JGE		0x30
-#define		BPF_JSET        0x40
+#define		BPF_JSET  0x40
+#define   BPF_JNE   0x50  // eBPF only: jump !=
+#define   BPF_JSGT  0x60  // eBPF only: signed '>'
+#define   BPF_EXIT  0x90  // eBPF BPF_JMP only: function return
+#define   BPF_JLT   0xa0  // eBPF only: unsigned '<'
+#define   BPF_JLE   0xb0  // eBPF only: unsigned '<='
+#define   BPF_JSLT  0xc0  // eBPF only: signed '<'
+#define   BPF_JSLE  0xd0  // eBPF only: signed '<='
+
 #define BPF_SRC(code)   ((code) & 0x08)
 #define		BPF_K		0x00
 #define		BPF_X		0x08
