@@ -5,7 +5,7 @@
 #include "bpf_common.h"
 
 // eBPF machine state
-int64_t registers[10] = {0}; // Composes r0-r9. r10 is readonly pointer to stack, no need to declare it here
+uint64_t registers[10] = {0}; // Composes r0-r9. r10 is readonly pointer to stack, no need to declare it here
 const void* stack;
 
 // Extremely basic stuff to confirm bytecode is valid. Nothing complex like the verifier does.
@@ -28,9 +28,11 @@ void create_bpf_insn(char* bytecode, int len, struct bpf_insn* code_insn){
   }
 }
 
-#define src_imm_op(x) if(source) registers[instr.dst_reg] = registers[instr.dst_reg] x registers[instr.src_reg]; else registers[instr.dst_reg] = registers[instr.dst_reg] x instr.imm;
+#define alu64_src_imm_op(x) if(source) registers[instr.dst_reg] = registers[instr.dst_reg] x registers[instr.src_reg]; \
+                            else registers[instr.dst_reg] = registers[instr.dst_reg] x instr.imm;
 void execute_alu64_insn(struct bpf_insn instr){
  
+  uint64_t msb;
   int source = BPF_SRC(instr.code);  // if source == 1 then use src_reg for src. Otherwise use immediate
   if(instr.off){
     printf("Offset shouldn't be zero\n"); // But CAN it??
@@ -39,30 +41,30 @@ void execute_alu64_insn(struct bpf_insn instr){
   switch(BPF_OP(instr.code))
   {
     case BPF_ADD:
-      src_imm_op(+);
+      alu64_src_imm_op(+);
       break;
     case BPF_SUB:
-      src_imm_op(-);
+      alu64_src_imm_op(-);
       break;
     case BPF_MUL:
-      src_imm_op(*);
+      alu64_src_imm_op(*);
       break;
     case BPF_DIV:
-      src_imm_op(/);
+      alu64_src_imm_op(/);
       break;
     case BPF_OR:
-      src_imm_op(|);
+      alu64_src_imm_op(|);
       break;
     case BPF_AND:
-      src_imm_op(&);
+      alu64_src_imm_op(&);
       break;
     case BPF_LSH:
-      src_imm_op(<<);
+      alu64_src_imm_op(<<);
       break;
     case BPF_RSH:
       // Logical right shift. MSB is replaced with a zero.
       if(source)
-        registers[instr.dst_reg] >>= (uint64_t)registers[instr.src_reg];
+        registers[instr.dst_reg] >>= registers[instr.src_reg];
       else
         registers[instr.dst_reg] >>= (uint64_t)instr.imm;   
       break;
@@ -70,10 +72,10 @@ void execute_alu64_insn(struct bpf_insn instr){
       registers[instr.dst_reg] = -registers[instr.dst_reg]; 
       break;
     case BPF_MOD:
-      src_imm_op(%);
+      alu64_src_imm_op(%);
       break;
     case BPF_XOR:
-      src_imm_op(^);
+      alu64_src_imm_op(^);
       break;
     case BPF_MOV:
       if(source)
@@ -83,36 +85,95 @@ void execute_alu64_insn(struct bpf_insn instr){
       break;
     case BPF_ARSH:
       // Arithmetic right shift.
+      msb = registers[instr.dst_reg] & ((uint64_t)1 << 63);
       if(source){
-        uint64_t msb = (uint64_t)registers[instr.src_reg] & (1 << 31);
-        registers[instr.dst_reg] >>= (uint64_t)registers[instr.src_reg];
-        registers[instr.dst_reg] ^= msb;
+        registers[instr.dst_reg] >>= registers[instr.src_reg];
       } else {
-        uint64_t msb = (uint64_t)instr.imm & (1 << 31);
         registers[instr.dst_reg] >>= (uint64_t)instr.imm;   
-        registers[instr.dst_reg] ^= msb;
       }
+      registers[instr.dst_reg] ^= msb;
       break;
     // case BPF_END:
     // Byteswap will be dealt with in ALU32. I could only find 0xd4 and 0xdc opcodes, both of which are BPF_CLASS() == BPF_ALU
     //  Would the BPF machine recognize 0xd7 or 0xdf as a legit instruction?
     default:
-      printf("Should never reach here\n");
+      printf("Unknown instruction: %d\n", BPF_OP(instr.code));
       break;
   }
 }
 
+#define jmp_src_imm_op(x, type) if(source){ \
+                            if(type registers[instr.dst_reg] x type registers[instr.src_reg]) \
+                              jump_offset += instr.off; \
+                          } else { \
+                            if(type registers[instr.dst_reg] x type instr.imm) \
+                              jump_offset += instr.off; \
+                          }
 int execute_jmp_insn(struct bpf_insn instr){
   
+  int jump_offset = 1;
   int source = BPF_SRC(instr.code);  // if source == 1 then use src_reg for src. Otherwise use immediate
   printf("JMP SRC: %d\n", source);
 
+  switch(BPF_OP(instr.code)){
+    case BPF_JA:
+      if(source){
+        // Jumps over the next 'off' # of instructions
+        jump_offset += instr.off;
+      } 
+      // there is no 'else' opcode for BPF_JA
+      break;
+    case BPF_JEQ:
+      jmp_src_imm_op(==, (uint64_t));
+      break;
+    case BPF_JGT:
+      jmp_src_imm_op(>, (uint64_t));
+      break;
+    case BPF_JGE:
+      jmp_src_imm_op(>=, (uint64_t));
+      break;
+    case BPF_JSET:
+      jmp_src_imm_op(&, (uint64_t));
+      break;
+    case BPF_JNE:
+      jmp_src_imm_op(!=, (uint64_t));
+      break;
+    case BPF_JSGT: // Signed Greater-Than
+      jmp_src_imm_op(>, (int64_t));
+      break;
+    case BPF_JSGE: // Signed Greater-Than Equals
+      jmp_src_imm_op(>=, (int64_t));
+      break;
+    case BPF_CALL:
+      // TODO: load r0-r4 as parameters and call immediate() as a function
+      break;
+    case BPF_EXIT:
+      jump_offset = -1;
+      break;
+    case BPF_JLT:
+      jmp_src_imm_op(<, (uint64_t));
+      break;
+    case BPF_JLE:
+      jmp_src_imm_op(<=, (uint64_t));
+      break;
+    case BPF_JSLT:
+      jmp_src_imm_op(<, (int64_t));
+      break;
+    case BPF_JSLE:
+      jmp_src_imm_op(<=, (int64_t));
+      break;
+    default:
+      printf("Unknown instruction: %d\n", BPF_OP(instr.code));
+      break;
+  }
   printf("BPF OP: %d\n", BPF_OP(instr.code));
 
-  return 1;
+  return jump_offset;
 }
 
 // Returns the offset of the following instruction.
+// Any positive number indicates that the program jumps X number of instructions ahead.
+// If a -1 is returned, that means an EXIT has been signaled. Return r0.
 int execute_bpf_insn(struct bpf_insn instr){
   int jump_offset = 1;
   // Simplifying the switch statement by sorting instructions based on BPF_CLASS before they then get sorted again, but in individual subfunctions.
@@ -140,7 +201,7 @@ int execute_bpf_insn(struct bpf_insn instr){
       printf("Unimplemented LD...\n");
       break;
     default:
-      printf("Should never reach here\n");
+      printf("Unknown class: %d\n", BPF_CLASS(instr.code));
       break;
   }
 
