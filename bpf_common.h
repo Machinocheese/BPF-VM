@@ -18,14 +18,14 @@ const unsigned int insn_size = sizeof(struct bpf_insn);
 #define   BPF_ALU   0x04
 #define   BPF_JMP   0x05
 #define   BPF_RET   0x06
-#define   BPF_MISC        0x07
+#define   BPF_MISC  0x07
 
 // ld/ldx fields
 #define BPF_SIZE(code)  ((code) & 0x18)
-#define   BPF_W   0x00 // 32-bit
-#define   BPF_H   0x08 // 16-bit
-#define   BPF_B   0x10 //  8-bit
-// eBPF   BPF_DW    0x18    64-bit
+#define   BPF_W   0x00   // 32-bit
+#define   BPF_H   0x08   // 16-bit
+#define   BPF_B   0x10   //  8-bit
+#define   BPF_DW    0x18 // 64-bit, eBPF only
 #define BPF_MODE(code)  ((code) & 0xe0)
 #define   BPF_IMM   0x00
 #define   BPF_ABS   0x20
