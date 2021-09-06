@@ -1,10 +1,13 @@
-# BPF-VM
+## What is this?
+Implements an eBPF VM in userspace, bypassing the annoyance of setting up a kernel debugging environment to test out eBPF.
+
+I tried not to look too much at the kernel BPF handling as this was a learning exercise.
+
+### Files
 - diassembler/
   - Just have the Python Capstone BPF disassembler stuff + setup instructions
+- Rest of the code is the eBPF-VM.
 
-- Rest of the code (the CMakeLists.txt) is emulating eBPF behavior in userspace w/o potentially setting up a kernel to debug.
-- I didn't look at the kernel's BPF handling code, mainly b/c this was a coding exercise.
-
-## TO-DO (09/05/2021)
+### TO-DO (09/05/2021)
 - Implement eBPF verifier
 - Implement eBPF kernel-specific functionality
