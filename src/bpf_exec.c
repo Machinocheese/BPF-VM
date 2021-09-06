@@ -85,6 +85,97 @@ int execute_alu64_insn(struct bpf_insn instr){
   return 1;
 }
 
+int execute_alu_insn(struct bpf_insn instr){
+ 
+  uint32_t msb;
+  unsigned int source = BPF_SRC(instr.code);
+  if(instr.off){
+    printf("Offset shouldn't be zero\n");
+  }
+
+  switch(BPF_OP(instr.code))
+  {
+    case BPF_ADD:
+      alu_src_imm_op(+);
+      break;
+    case BPF_SUB:
+      alu_src_imm_op(-);
+      break;
+    case BPF_MUL:
+      alu_src_imm_op(*);
+      break;
+    case BPF_DIV:
+      alu_src_imm_op(/);
+      break;
+    case BPF_OR:
+      alu_src_imm_op(|);
+      break;
+    case BPF_AND:
+      alu_src_imm_op(&);
+      break;
+    case BPF_LSH:
+      alu_src_imm_op(<<);
+      break;
+    case BPF_RSH:
+      // Logical right shift. MSB is replaced with a zero.
+      if(source)
+        registers[instr.dst_reg] = (uint32_t)registers[instr.dst_reg] >> (uint32_t)registers[instr.src_reg];
+      else
+        registers[instr.dst_reg] = (uint32_t)registers[instr.dst_reg] >> (uint32_t)instr.imm;   
+      break;
+    case BPF_NEG:
+      registers[instr.dst_reg] = -1 * (uint32_t)registers[instr.dst_reg]; 
+      break;
+    case BPF_MOD:
+      alu_src_imm_op(%);
+      break;
+    case BPF_XOR:
+      alu_src_imm_op(^);
+      break;
+    case BPF_MOV:
+      if(source)
+        registers[instr.dst_reg] = (uint32_t)registers[instr.src_reg];
+      else
+        registers[instr.dst_reg] = (uint32_t)instr.imm;   
+      break;
+    case BPF_ARSH:
+      // Arithmetic right shift.
+      msb = (uint32_t)registers[instr.dst_reg] & ((uint32_t)1 << 31);
+      if(source){
+        registers[instr.dst_reg] = (uint32_t)registers[instr.dst_reg] >> (uint32_t)registers[instr.src_reg];
+      } else {
+        registers[instr.dst_reg] = (uint32_t)registers[instr.dst_reg] >> (uint32_t)instr.imm;   
+      }
+      registers[instr.dst_reg] ^= msb;
+      break;
+    case BPF_END:
+      // ALU32-specific.
+      if(source){ // Source flag for BPF_END only indicates whether you want little-endian or big-endian conversion
+        if(instr.imm == 16){
+          registers[instr.dst_reg] = htobe16(registers[instr.dst_reg]); 
+        } else if(instr.imm == 32){
+          registers[instr.dst_reg] = htobe32(registers[instr.dst_reg]);
+        } else if(instr.imm == 64){
+          registers[instr.dst_reg] = htobe64(registers[instr.dst_reg]); 
+        }
+      } else {
+        if(instr.imm == 16){
+          registers[instr.dst_reg] = htole16(registers[instr.dst_reg]); 
+        } else if(instr.imm == 32){
+          registers[instr.dst_reg] = htole32(registers[instr.dst_reg]);
+        } else if(instr.imm == 64){
+          registers[instr.dst_reg] = htole64(registers[instr.dst_reg]); 
+        }
+      }
+      break;
+    default:
+      printf("Unknown instruction: %d\n", BPF_OP(instr.code));
+      break;
+  }
+
+  return 1;
+}
+
 int execute_jmp_insn(struct bpf_insn instr){
   
   int jump_offset = 1;
@@ -312,7 +403,7 @@ int execute_bpf_insn(struct bpf_insn instr){
       jump_offset = execute_jmp_insn(instr);
       break;
     case BPF_ALU:
-      printf("Unimplemented ALU...\n");
+      jump_offset = execute_alu_insn(instr);
       break;
     case BPF_STX:
       jump_offset = execute_stx_insn(instr);

@@ -6,6 +6,7 @@
 #include <sys/mman.h>
 #include <stdio.h>
 #include <string.h>
+#include <endian.h>
 
 #include "bpf_common.h"
 // eBPF machine state
@@ -19,7 +20,8 @@ char* stack;
 
 #define alu64_src_imm_op(x) if(source) registers[instr.dst_reg] = registers[instr.dst_reg] x registers[instr.src_reg]; \
                             else registers[instr.dst_reg] = registers[instr.dst_reg] x instr.imm;
-
+#define alu_src_imm_op(x) if(source) registers[instr.dst_reg] = (uint32_t)registers[instr.dst_reg] x (uint32_t)registers[instr.src_reg]; \
+                          else registers[instr.dst_reg] = (uint32_t)registers[instr.dst_reg] x (uint32_t)instr.imm;
 #define jmp_src_imm_op(x, type) if(source){ \
                             if(type registers[instr.dst_reg] x type registers[instr.src_reg]) \
                               jump_offset += instr.off; \
@@ -29,6 +31,7 @@ char* stack;
                           }
 void create_bpf_insn(char* bytecode, int len, struct bpf_insn* code_insn);
 int execute_alu64_insn(struct bpf_insn instr);
+int execute_alu_insn(struct bpf_insn instr);
 int execute_jmp_insn(struct bpf_insn instr);
 int execute_ld_insn(struct bpf_insn instr);
 int execute_ldx_insn(struct bpf_insn instr);
